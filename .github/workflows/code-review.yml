@@ -24,16 +24,22 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Restore (ignore failures if no solution yet)
+      - name: Restore (solution + tool project)
         run: |
-          dotnet restore || echo "No solution to restore yet"
+          if [ -f CodeReviewDot.sln ]; then dotnet restore CodeReviewDot.sln; fi
+          dotnet restore tools/CodeReviewTool/CodeReviewTool.csproj
+
+      - name: Build Code Review Tool (Release)
+        run: |
+          dotnet build tools/CodeReviewTool/CodeReviewTool.csproj --configuration Release --no-restore
 
       - name: Run Code Review
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          dotnet run --project tools/CodeReviewTool/CodeReviewTool.csproj --no-build || (echo "Code review tool failed" && exit 1)
+          dotnet run --configuration Release --project tools/CodeReviewTool/CodeReviewTool.csproj || (echo "Code review tool failed" && exit 1)
 
-      - name: Build (optional validation)
+      - name: (Optional) Verify Solution Builds
+        if: always()
         run: |
-          dotnet build --no-restore || echo "Build failed (may be expected if repo empty)"
+          if [ -f CodeReviewDot.sln ]; then dotnet build CodeReviewDot.sln --configuration Release --no-restore; fi
