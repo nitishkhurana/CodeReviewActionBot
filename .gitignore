@@ -1,0 +1,33 @@
+# Build artifacts
+bin/
+obj/
+**/bin/
+**/obj/
+
+# User-specific / IDE
+*.user
+*.rsuser
+*.suo
+*.userosscache
+*.sln.docstates
+.vscode/
+
+# NuGet
+*.nupkg
+packages/
+
+# Logs & diagnostics
+*.log
+
+# Local test data
+event.json
+
+# Tooling
+.env
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# GitHub workflow temp
+.github/workflows/*.tmp

@@ -1,0 +1,39 @@
+name: Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  code-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore (ignore failures if no solution yet)
+        run: |
+          dotnet restore || echo "No solution to restore yet"
+
+      - name: Run Code Review
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          dotnet run --project tools/CodeReviewTool/CodeReviewTool.csproj --no-build || (echo "Code review tool failed" && exit 1)
+
+      - name: Build (optional validation)
+        run: |
+          dotnet build --no-restore || echo "Build failed (may be expected if repo empty)"

@@ -1,0 +1,29 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.2.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tools", "tools", "{07C2787E-EAC7-C090-1BA3-A61EC2A24D84}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CodeReviewTool", "tools\CodeReviewTool\CodeReviewTool.csproj", "{CCDA4C61-8235-78EA-5F72-1DD7F707A9F3}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{CCDA4C61-8235-78EA-5F72-1DD7F707A9F3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CCDA4C61-8235-78EA-5F72-1DD7F707A9F3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CCDA4C61-8235-78EA-5F72-1DD7F707A9F3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CCDA4C61-8235-78EA-5F72-1DD7F707A9F3}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{CCDA4C61-8235-78EA-5F72-1DD7F707A9F3} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {F26D8BC6-BFD3-4798-B9A4-D2895741221A}
+	EndGlobalSection
+EndGlobal
