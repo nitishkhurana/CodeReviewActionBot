@@ -129,23 +129,9 @@ internal static class Program
                 body = sb.ToString();
             }
 
-            // Find existing bot comment to update instead of duplicating
-            //var issueComments = await client.Issue.Comment.GetAllForIssue(owner, repo, prNumber, ApiOptions.None);
-            //var existing = issueComments.FirstOrDefault(c => c.User.Login.Equals(pr.User.Login, StringComparison.OrdinalIgnoreCase) == false && c.Body != null && c.Body.Contains("Automated Code Review Suggestions"));
-            //if (existing != null)
-            // {
-            //     await client.Issue.Comment.Update(owner, repo, existing.Id, body);
-            // }
-            // else
             {
                 try
                 {
-                    await client.Issue.Comment.Create(owner, repo, prNumber, body);
-                }
-                catch (OverflowException ovEx)
-                {
-                    Console.WriteLine("OverflowException when using Octokit to create comment. Falling back to direct REST API. Details: " + ovEx.Message);
-                    // Fallback REST call
                     using var http = new HttpClient();
                     http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("dotnet-code-review", "1.0"));
                     http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", githubToken);
