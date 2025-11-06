@@ -2,10 +2,14 @@
 // Copyright (c) CodeReviewDot contributors. All rights reserved.
 // Licensed under the MIT License.
 // </copyright>
+using System.ClientModel;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json; // used for possible future parsing/extensions
 using Octokit;
+using OpenAI;
+using OpenAI.Chat;
 
 /// <summary>
 /// Entry point for automated PR code review action.
@@ -54,78 +58,129 @@ internal static class Program
             var pr = await client.PullRequest.Get(owner, repo, prNumber);
             var files = await client.PullRequest.Files(owner, repo, prNumber);
 
-            // Basic heuristic review: naming, large files, TODO comments.
-            var comments = new List<string>();
+            // Collect diff context for AI model (limit size to avoid excessive token usage)
+            var diffBuilder = new StringBuilder();
             foreach (var f in files)
             {
-                if (f.Status != "added" && f.Status != "modified")
+                if (f.Patch is null)
                 {
                     continue;
                 }
-
-                // Only inspect text based
-                if (f.Patch == null)
+                diffBuilder.AppendLine($"# File: {f.FileName}");
+                // Truncate overly large patches
+                var patch = f.Patch;
+                if (patch.Length > 8000)
                 {
-                    continue;
+                    patch = patch.Substring(0, 8000) + "\n...[truncated]";
                 }
-                var patchLines = f.Patch.Split('\n');
+                diffBuilder.AppendLine(patch);
+                diffBuilder.AppendLine();
+            }
+            var fullDiff = diffBuilder.ToString();
 
-                int addedLines = patchLines.Count(l => l.StartsWith("+"));
-                if (addedLines > 400)
+            // Load prompt template
+            string promptPath = Path.Combine(Directory.GetCurrentDirectory(), "review-prompt.md");
+            string promptTemplate = File.Exists(promptPath)
+                ? File.ReadAllText(promptPath)
+                : "You are a code review assistant. Provide findings and suggestions.";
+
+            Console.WriteLine("Prompt Path exists: " + File.Exists(promptPath));
+
+            // Compose model input
+            var modelName = Environment.GetEnvironmentVariable("MODEL_NAME") ?? "openai/gpt-4o"; // user can override
+            var modelEndpoint = Environment.GetEnvironmentVariable("MODEL_ENDPOINT") ?? "https://models.github.ai/inference"; // placeholder endpoint; user should set actual
+            var aiToken = Environment.GetEnvironmentVariable("AI_TOKEN") ?? githubToken;
+
+            string aiBody = string.Empty;
+            bool aiSucceeded = false;
+            try
+            {
+                var openAIOptions = new OpenAIClientOptions()
                 {
-                    comments.Add($"File `{f.FileName}` adds {addedLines} lines. Consider splitting into smaller, focused changes to aid review.");
+                    Endpoint = new Uri(modelEndpoint)
+
+                };
+
+                var chatClient = new ChatClient(modelName, new ApiKeyCredential(aiToken), openAIOptions);
+                List<ChatMessage> messages = new List<ChatMessage>()
+                {
+                    new SystemChatMessage(promptTemplate),
+                    new UserChatMessage(fullDiff),
+                };
+
+                var requestOptions = new ChatCompletionOptions()
+                {
+                    Temperature = 1.0f,
+                    TopP = 1.0f,
+                    MaxOutputTokenCount = 1000
+                };
+
+                var response = chatClient.CompleteChat(messages, requestOptions);
+                var textResponse = (response.Value.Content as ChatMessageContent)[0].Text;
+                if (!string.IsNullOrWhiteSpace(textResponse))
+                {
+                    aiBody = textResponse.Trim();
+                    aiSucceeded = true;
                 }
-
-                foreach (var l in patchLines.Where(l => l.StartsWith("+")))
+                else
                 {
-                    if (l.Contains("TODO"))
+                    Console.WriteLine("AI SDK returned empty response; using heuristic fallback.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("AI SDK invocation error: " + ex.Message);
+            }
+
+            // Heuristic fallback (previous logic simplified)
+            var heuristicFindings = new List<string>();
+            if (!aiSucceeded)
+            {
+                foreach (var f in files)
+                {
+                    if (f.Patch == null)
                     {
-                        comments.Add($"`{f.FileName}` contains a TODO in newly added code. Prefer creating an issue and referencing it, or completing the task before merge.");
+                        continue;
                     }
-
-                    if (l.Contains("Console.WriteLine"))
+                    var patchLines = f.Patch.Split('\n');
+                    int addedLines = patchLines.Count(l => l.StartsWith("+"));
+                    if (addedLines > 400)
                     {
-                        comments.Add($"`{f.FileName}` uses Console.WriteLine in new code. For production or library code, consider using a structured logger (e.g., ILogger) so logs are configurable and testable.");
+                        heuristicFindings.Add($"File `{f.FileName}` adds {addedLines} lines. Consider splitting into smaller changes.");
+                    }
+                    foreach (var l in patchLines.Where(l => l.StartsWith("+")))
+                    {
+                        if (l.Contains("TODO"))
+                        {
+                            heuristicFindings.Add($"`{f.FileName}` newly added TODO; create issue reference or complete before merge.");
+                        }
+                        if (l.Contains("Console.WriteLine"))
+                        {
+                            heuristicFindings.Add($"`{f.FileName}` uses Console.WriteLine; prefer structured logging (ILogger).");
+                        }
                     }
                 }
             }
-
-            // Detect unresolved previous comments pattern? (Simplified: we re-run every time.)
             string body;
-            if (comments.Count == 0)
+            if (aiSucceeded)
             {
-                body = "✅ No automated review comments found.";// Nice work! The changes look clean and focused. If you would like more thorough static analysis, consider adding Roslyn analyzers or StyleCop for deeper checks.";
+                body = aiBody;
+            }
+            else if (heuristicFindings.Count == 0)
+            {
+                body = "✅ No automated review comments found. (AI unavailable; heuristic scan clean.)";
             }
             else
             {
                 var sb = new StringBuilder();
-                sb.AppendLine("👋 Automated Code Review Suggestions (early guidance):");
-                sb.AppendLine();
+                sb.AppendLine("👋 Automated Heuristic Review (AI unavailable):");
                 int i = 1;
-                foreach (var c in comments.Distinct())
+                foreach (var fnd in heuristicFindings.Distinct())
                 {
-                    sb.AppendLine($"{i}. {c}");
-
-                    // Suggestion attempt
-                    if (c.Contains("Console.WriteLine"))
-                    {
-                        sb.AppendLine("   Suggestion: Inject an ILogger (e.g., via dependency injection) and replace Console.WriteLine with logger.LogInformation or appropriate level.");
-                    }
-
-                    if (c.Contains("TODO"))
-                    {
-                        sb.AppendLine("   Suggestion: Create a GitHub issue describing the pending work and replace the TODO with a reference comment like // TODO(issue-123): <summary>.");
-                    }
-
-                    if (c.Contains("adds "))
-                    {
-                        sb.AppendLine("   Suggestion: Break this file or change set into smaller PRs focusing on one concern each. This improves review depth and reduces merge risk.");
-                    }
-
-                    sb.AppendLine();
+                    sb.AppendLine($"{i}. {fnd}");
                     i++;
                 }
-                sb.AppendLine("Please treat these as friendly guidance to improve clarity, maintainability, and scalability.");
+                sb.AppendLine();
                 body = sb.ToString();
             }
 
@@ -156,7 +211,9 @@ internal static class Program
             // Track whether we changed labels (currently only for potential future logging)
             bool changed = false;
 
-            if (comments.Count == 0)
+            // Determine presence of findings (AI or heuristic) for labels
+            bool hasFindings = aiSucceeded ? !body.Contains("No significant issues", StringComparison.OrdinalIgnoreCase) && !body.Contains("✅ No", StringComparison.OrdinalIgnoreCase) : heuristicFindings.Count > 0;
+            if (!hasFindings)
             {
                 // Remove Changes Requested if present
                 if (currentLabels.Contains(ChangesRequestedLabel))
@@ -178,7 +235,6 @@ internal static class Program
                     await client.Issue.Labels.RemoveFromIssue(owner, repo, prNumber, ReadyForReviewLabel);
                     changed = true;
                 }
-
                 if (!currentLabels.Contains(ChangesRequestedLabel))
                 {
                     await client.Issue.Labels.AddToIssue(owner, repo, prNumber, new[] { ChangesRequestedLabel });

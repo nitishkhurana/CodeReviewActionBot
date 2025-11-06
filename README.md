@@ -17,11 +17,29 @@ The tool ensures labels exist (with colors) and updates them if color changes:
 - `Ready for Review`: `#28a745`
 
 ## Extending the Review
-Currently the review is heuristic-based. You can extend it by:
-1. Adding Roslyn analyzers or StyleCop rules (already referenced globally in `Directory.Build.props`).
-2. Parsing analyzer diagnostics and including them in suggestions.
-3. Adding complexity metrics (e.g., cyclomatic complexity) via tools like [Roslynator](https://github.com/JosefPihrt/Roslynator).
-4. Including `dotnet format --verify-no-changes` to enforce style.
+The action now supports AI-assisted review plus a heuristic fallback.
+
+### AI Model Review
+The workflow will:
+1. Aggregate the PR diff (truncating very large patches).
+2. Load the prompt template from `review-prompt.md`.
+3. Send both prompt and diff to a configurable model endpoint.
+4. Use the model's Markdown response directly as the PR comment.
+5. If the model call fails, it falls back to simple heuristics (large additions, TODO, `Console.WriteLine`).
+
+Configure via environment variables (set them in the workflow if different from defaults):
+- `MODEL_NAME` (default: `openai/gpt-4o` placeholder – replace with your actual GitHub Model ID)
+- `MODEL_ENDPOINT` (default: `https://models.github.ai/inference` placeholder – update to the correct endpoint for GitHub Models or provider)
+- `AI_TOKEN` (optional – uses `GITHUB_TOKEN` if not set). Provide a separate token if the model requires different scopes.
+
+Edit `review-prompt.md` to change tone, structure, or rules without recompiling.
+
+### Further Enhancements
+1. Parse analyzer diagnostics and feed them into the prompt.
+2. Add complexity metrics (Roslynator) and summarize hotspots.
+3. Include `dotnet format --verify-no-changes` for style enforcement pre-review.
+4. Add caching to skip AI call when diff unchanged.
+5. Provide inline review comments using PR Review API when model returns line-level data.
 
 ## Local Development
 ```
@@ -36,10 +54,10 @@ Currently the review is heuristic-based. You can extend it by:
 - Only writes PR comments and labels.
 
 ## Future Ideas
-- Add configuration file (e.g., `.codereviewconfig.json`) to control rules.
+- Add configuration file (e.g., `.codereviewconfig.json`) to control thresholds & model settings.
 - Surface analyzer diagnostics with severity filtering.
 - Provide inline review comments at specific lines using the Pull Request Review API.
-- Add unit tests around parsing logic.
+- Add unit tests around diff parsing & AI response classification.
 - Cache previous review results to minimize duplicate work.
 
 ## Troubleshooting
