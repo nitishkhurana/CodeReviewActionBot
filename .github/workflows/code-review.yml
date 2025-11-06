@@ -36,6 +36,7 @@ jobs:
       - name: Run Code Review
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AI_TOKEN: ${{ secrets.AI_TOKEN }}
         run: |
           dotnet run --configuration Release --project tools/CodeReviewTool/CodeReviewTool.csproj || (echo "Code review tool failed" && exit 1)
 
